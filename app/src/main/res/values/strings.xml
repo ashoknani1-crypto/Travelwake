@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">TravelWake</string>
+    <string name="shortcut_add_todo">Add To-Do Task</string>
+    <string name="shortcut_add_pack_item">Add Pack Item</string>
+    <string name="shortcut_view_pack_list">View Packing List</string>
+    <string name="shortcut_view_todo_list">View To-Do List</string>
+    <string name="shortcut_start_journey">Start Journey</string>
+    <string name="shortcut_voice_assistant">Voice Assistant</string>
+</resources>

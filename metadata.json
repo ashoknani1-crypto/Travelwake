@@ -1,0 +1,6 @@
+{
+  "name": "TravelWake",
+  "description": "Smart travel alarm that alerts you before reaching your destination with weather recommendations and belongings checklist.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

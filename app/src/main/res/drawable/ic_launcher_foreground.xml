@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Glow aura in safe zone -->
+    <path
+        android:pathData="M54,54m-22,0a22,22 0 1,0 44,0a22,22 0 1,0 -44,0"
+        android:fillColor="#224CC9F0" />
+    
+    <!-- Bold Pin & Bell Icon Composite centered in 66dp safe zone (30 to 78) -->
+    <!-- Location Pin body with electric cyan / bright blue gradient -->
+    <path
+        android:pathData="M54,28 C43.5,28 35,36.5 35,47 C35,60 54,77 54,77 C54,77 73,60 73,47 C73,36.5 64.5,28 54,28 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="35"
+                android:startY="28"
+                android:endX="73"
+                android:endY="77"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#00F0FF" />
+                <item android:offset="0.5" android:color="#2F80ED" />
+                <item android:offset="1.0" android:color="#4F46E5" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Inner cutout disc -->
+    <path
+        android:pathData="M54,45m-10.5,0a10.5,10.5 0 1,0 21,0a10.5,10.5 0 1,0 -21,0"
+        android:fillColor="#0A1128" />
+
+    <!-- Alarm Bell inside the pin -->
+    <!-- Bell body -->
+    <path
+        android:pathData="M54,39 C51.2,39 49,41.2 49,44 L49,48 C47.5,49 46.5,50.5 46.5,52 L61.5,52 C61.5,50.5 60.5,49 59,48 L59,44 C59,41.2 56.8,39 54,39 Z"
+        android:fillColor="#FFFFFF" />
+    <!-- Bell clapper -->
+    <path
+        android:pathData="M54,54 C55.1,54 56,53.1 56,52 L52,52 C52,53.1 52.9,54 54,54 Z"
+        android:fillColor="#FFD166" />
+    <!-- Bell top knob -->
+    <path
+        android:pathData="M54,38m-1.2,0a1.2,1.2 0 1,0 2.4,0a1.2,1.2 0 1,0 -2.4,0"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Motion pulse waves around head of pin -->
+    <path
+        android:pathData="M31,43 C31,41 32,39 33.5,37"
+        android:strokeWidth="2.5"
+        android:strokeColor="#4CC9F0"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M77,43 C77,41 76,39 74.5,37"
+        android:strokeWidth="2.5"
+        android:strokeColor="#4CC9F0"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>
