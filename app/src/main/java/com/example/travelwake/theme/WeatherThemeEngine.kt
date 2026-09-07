@@ -8,6 +8,17 @@ import androidx.compose.ui.graphics.Color
 import com.example.travelwake.data.model.WeatherInfo
 import com.example.ui.theme.AlarmRed
 import com.example.ui.theme.AlarmRedContainer
+import com.example.ui.theme.BrightCyan
+import com.example.ui.theme.DarkNavyCard
+import com.example.ui.theme.DarkNavySurface
+import com.example.ui.theme.DeepNavyAbyss
+import com.example.ui.theme.DeepNavyDark
+import com.example.ui.theme.DeepNavyMidnight
+import com.example.ui.theme.ElectricBlue
+import com.example.ui.theme.GlassNavyBorder
+import com.example.ui.theme.GlassNavyCard
+import com.example.ui.theme.GlassNavySurface
+import com.example.ui.theme.IndigoAccent
 import com.example.ui.theme.ProfessionalBackground
 import com.example.ui.theme.ProfessionalBorder
 import com.example.ui.theme.ProfessionalDivider
@@ -18,6 +29,9 @@ import com.example.ui.theme.ProfessionalSurface
 import com.example.ui.theme.ProfessionalSurfaceVariant
 import com.example.ui.theme.ProfessionalTextPrimary
 import com.example.ui.theme.ProfessionalTextSecondary
+import com.example.ui.theme.SurfaceVariantDark
+import com.example.ui.theme.TextPrimaryDark
+import com.example.ui.theme.TextSecondaryDark
 
 enum class WeatherThemeType(
     val displayName: String,
@@ -25,6 +39,7 @@ enum class WeatherThemeType(
     val description: String
 ) {
     DEFAULT("Professional Polish", "👔", "Classic high-contrast professional styling"),
+    GLASSMORPHISM("Premium Glassmorphism", "💎", "Translucent frosted surfaces & deep navy gradients"),
     SUNNY_CLEAR("Radiant Sunshine", "☀️", "Warm luminous sky blue with golden accents"),
     RAINY_STORMY("Rain Atmosphere", "🌧️", "Deep slate teal and refreshing ocean cyan"),
     CLOUDY_OVERCAST("Cool Overcast", "⛅", "Soft steel slate with periwinkle twilight tones"),
@@ -88,6 +103,69 @@ object WeatherThemeEngine {
             onBackground = Color(0xFFE2E2E9),
             surface = Color(0xFF1B1F27),
             onSurface = Color(0xFFE2E2E9)
+        )
+    )
+
+    // 1b. Premium Glassmorphism Theme (Translucent Surfaces & Deep Navy Gradients)
+    val GlassmorphismPalette = WeatherThemePalette(
+        themeType = WeatherThemeType.GLASSMORPHISM,
+        primaryColor = BrightCyan,
+        primaryContainerColor = Color(0xFF004D70),
+        onPrimaryContainerColor = Color(0xFFC7E7FF),
+        backgroundColor = DeepNavyDark,
+        surfaceColor = DarkNavySurface,
+        surfaceVariantColor = DarkNavyCard,
+        borderColor = GlassNavyBorder,
+        accentHighlight = ElectricBlue,
+        gradientBackground = Brush.verticalGradient(
+            colors = listOf(
+                DeepNavyAbyss,
+                DeepNavyMidnight,
+                DarkNavySurface
+            )
+        ),
+        lightColorScheme = lightColorScheme(
+            primary = ProfessionalPrimary,
+            onPrimary = Color.White,
+            primaryContainer = ProfessionalPrimaryContainer,
+            onPrimaryContainer = ProfessionalOnPrimaryContainer,
+            secondary = ProfessionalPrimary,
+            onSecondary = Color.White,
+            secondaryContainer = ProfessionalSurfaceVariant,
+            onSecondaryContainer = ProfessionalTextPrimary,
+            tertiary = IndigoAccent,
+            background = ProfessionalBackground,
+            onBackground = ProfessionalTextPrimary,
+            surface = ProfessionalSurface,
+            onSurface = ProfessionalTextPrimary,
+            surfaceVariant = ProfessionalSurfaceVariant,
+            onSurfaceVariant = ProfessionalTextSecondary,
+            outline = ProfessionalBorder,
+            outlineVariant = ProfessionalDivider,
+            error = AlarmRed,
+            onError = Color.White,
+            errorContainer = AlarmRedContainer
+        ),
+        darkColorScheme = darkColorScheme(
+            primary = BrightCyan,
+            onPrimary = Color(0xFF001E2E),
+            primaryContainer = Color(0xFF004D70),
+            onPrimaryContainer = Color(0xFFC7E7FF),
+            secondary = ElectricBlue,
+            onSecondary = Color.White,
+            secondaryContainer = DarkNavyCard,
+            onSecondaryContainer = Color(0xFFD8E2FF),
+            tertiary = IndigoAccent,
+            background = DeepNavyDark,
+            onBackground = TextPrimaryDark,
+            surface = DarkNavySurface,
+            onSurface = TextPrimaryDark,
+            surfaceVariant = SurfaceVariantDark,
+            onSurfaceVariant = TextSecondaryDark,
+            outline = GlassNavyBorder,
+            outlineVariant = Color(0xFF1E293B),
+            error = Color(0xFFFFB4AB),
+            onError = Color(0xFF690005)
         )
     )
 

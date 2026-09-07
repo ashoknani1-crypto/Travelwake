@@ -198,7 +198,9 @@ object VoiceCommandParser {
 
     private fun isStartJourneyCommand(lower: String): Boolean {
         return lower.contains("start journey") || lower.contains("begin journey") ||
-                lower.contains("start trip") || lower.contains("begin trip") ||
+                lower.contains("start my travelwake journey") || lower.contains("start my journey") ||
+                lower.contains("start travelwake journey") || lower.contains("start trip") ||
+                lower.contains("start my trip") || lower.contains("begin trip") ||
                 lower.contains("start tracking") || lower.contains("let's go") ||
                 lower.contains("यात्रा शुरू") || lower.contains("ప్రయాణం ప్రారంభించండి")
     }

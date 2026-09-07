@@ -69,5 +69,7 @@ data class UserProfile(
     val uid: String = "",
     val email: String = "",
     val displayName: String = "",
-    val isAnonymous: Boolean = true
+    val photoUrl: String? = null,
+    val isAnonymous: Boolean = true,
+    val provider: String = "firebase"
 )

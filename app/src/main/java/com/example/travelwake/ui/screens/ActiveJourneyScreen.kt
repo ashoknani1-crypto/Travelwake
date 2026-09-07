@@ -107,6 +107,8 @@ fun ActiveJourneyScreen(
     val isLoadingTips by viewModel.isLoadingTravelTips.collectAsState()
     val batterySaverEnabled by viewModel.batterySaverEnabled.collectAsState()
     val batterySaverInfo by viewModel.batterySaverInfo.collectAsState()
+    val isGpsUnavailable by viewModel.isGpsUnavailable.collectAsState()
+    val backupTimerSecs by viewModel.backupTimerRemainingSeconds.collectAsState()
 
     // If journey enters ALARMING state, automatically show Alarm Screen
     if (journeyState == JourneyStatus.ALARMING) {
@@ -166,10 +168,29 @@ fun ActiveJourneyScreen(
 
                 Spacer(modifier = Modifier.width(4.dp))
 
+                val statusText = when (journeyState) {
+                    com.example.travelwake.data.model.JourneyStatus.PAUSED -> "PAUSED"
+                    com.example.travelwake.data.model.JourneyStatus.RECOVERY -> "GPS LOST (RECOVERY)"
+                    com.example.travelwake.data.model.JourneyStatus.APPROACHING -> "APPROACHING"
+                    else -> if (isApproaching) "APPROACHING" else "GPS ACTIVE"
+                }
+                val statusColor = when (journeyState) {
+                    com.example.travelwake.data.model.JourneyStatus.PAUSED -> ProfessionalTextSecondary
+                    com.example.travelwake.data.model.JourneyStatus.RECOVERY -> AlertAmber
+                    com.example.travelwake.data.model.JourneyStatus.APPROACHING -> AlertAmber
+                    else -> if (isApproaching) AlertAmber else SafetyGreen
+                }
+                val statusBg = when (journeyState) {
+                    com.example.travelwake.data.model.JourneyStatus.PAUSED -> ProfessionalSurfaceVariant
+                    com.example.travelwake.data.model.JourneyStatus.RECOVERY -> AlertAmberContainer
+                    com.example.travelwake.data.model.JourneyStatus.APPROACHING -> AlertAmberContainer
+                    else -> if (isApproaching) AlertAmberContainer else SafetyGreenContainer
+                }
+
                 Surface(
-                    color = if (isApproaching) AlertAmberContainer else SafetyGreenContainer,
+                    color = statusBg,
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, if (isApproaching) AlertAmber.copy(alpha = 0.4f) else SafetyGreen.copy(alpha = 0.4f))
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.4f))
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -179,13 +200,13 @@ fun ActiveJourneyScreen(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(if (isApproaching) AlertAmber else SafetyGreen)
+                                .background(statusColor)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isApproaching) "APPROACHING" else "GPS ACTIVE",
+                            text = statusText,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (isApproaching) AlertAmber else SafetyGreen,
+                            color = statusColor,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.5.sp
                         )
@@ -195,6 +216,73 @@ fun ActiveJourneyScreen(
         }
 
         Spacer(modifier = Modifier.height(14.dp))
+
+        // GPS Loss and Backup Arrival Timer Card
+        if (isGpsUnavailable || journeyState == com.example.travelwake.data.model.JourneyStatus.RECOVERY) {
+            val mins = backupTimerSecs / 60
+            val secs = backupTimerSecs % 60
+            val timerStr = String.format(java.util.Locale.getDefault(), "%02d:%02d", mins, secs)
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .border(BorderStroke(1.5.dp, AlertAmber), RoundedCornerShape(20.dp))
+                    .testTag("gps_recovery_banner"),
+                color = AlertAmberContainer,
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "GPS Lost",
+                            tint = AlertAmber,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "GPS Signal Lost — Recovery Mode",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = AlertAmber,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "TravelWake is maintaining safety coverage using an automatic arrival countdown timer. If GPS signal does not return, your alarm will trigger when the timer expires.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ProfessionalTextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = AlertAmber.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Backup Arrival Countdown:",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = AlertAmber,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = timerStr,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = AlertAmber,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+        }
 
         // Pre-Alarm progressive alert banner
         if (!preAlarmMessage.isNullOrBlank()) {
@@ -607,6 +695,43 @@ fun ActiveJourneyScreen(
                         border = BorderStroke(1.dp, ProfessionalBorder)
                     ) {
                         Text("Pause Sim", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            if (journeyState == com.example.travelwake.data.model.JourneyStatus.PAUSED) {
+                                viewModel.resumeJourney()
+                            } else {
+                                viewModel.pauseJourney()
+                            }
+                        },
+                        modifier = Modifier.weight(1f).testTag("pause_resume_journey_button"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ProfessionalPrimary),
+                        border = BorderStroke(1.dp, ProfessionalPrimary.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = if (journeyState == com.example.travelwake.data.model.JourneyStatus.PAUSED) "▶ Resume Journey" else "⏸ Pause Journey",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.notifyGpsSignalLost() },
+                        modifier = Modifier.weight(1f).testTag("sim_gps_loss_button"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AlertAmber),
+                        border = BorderStroke(1.dp, AlertAmber.copy(alpha = 0.5f))
+                    ) {
+                        Text("📡 Test GPS Loss", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 }
 

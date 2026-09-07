@@ -38,6 +38,7 @@ import com.example.travelwake.engine.HapticFeedbackProfile
 import com.example.travelwake.engine.SoundAlertTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +72,7 @@ import com.example.travelwake.ui.components.SevereWeatherAlertCard
 import com.example.travelwake.ui.components.ThemeModeSwitcherCard
 import com.example.travelwake.viewmodel.TravelWakeViewModel
 import com.example.ui.theme.AlertAmber
+import com.example.ui.theme.BrightCyan
 import com.example.ui.theme.LocalWeatherThemePalette
 import com.example.ui.theme.ProfessionalBackground
 import com.example.ui.theme.ProfessionalBorder
@@ -96,6 +99,8 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val currentUser by viewModel.currentUser.collectAsState()
+    val isAuthLoading by viewModel.isAuthLoading.collectAsState()
+    val authStatusMessage by viewModel.authStatusMessage.collectAsState()
     val alertDistance by viewModel.alertDistanceMeters.collectAsState()
     val transportMode by viewModel.transportMode.collectAsState()
     val currentTheme by viewModel.weatherTheme.collectAsState()
@@ -190,9 +195,23 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                val context = LocalContext.current
+
+                if (authStatusMessage != null) {
+                    Text(
+                        text = authStatusMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrightCyan,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
                 if (currentUser?.isAnonymous != false) {
                     Button(
-                        onClick = { viewModel.signInWithGoogle() },
+                        onClick = {
+                            viewModel.signInWithCredentialManager(context)
+                        },
+                        enabled = !isAuthLoading,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp)
@@ -203,10 +222,20 @@ fun SettingsScreen(
                             contentColor = Color.White
                         )
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        if (isAuthLoading) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Sign In with Google (Firebase)", fontWeight = FontWeight.Bold)
+                            Text("Signing In...", fontWeight = FontWeight.Bold)
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Sign In with Google (Credential Manager)", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 } else {
@@ -225,7 +254,12 @@ fun SettingsScreen(
                             ) {
                                 Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = SafetyGreen, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Firestore Synced", style = MaterialTheme.typography.labelSmall, color = SafetyGreen, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (currentUser?.provider?.contains("google") == true) "Google Account Synced" else "Firebase Synced",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SafetyGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                         OutlinedButton(

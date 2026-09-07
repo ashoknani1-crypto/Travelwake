@@ -23,7 +23,9 @@ enum class JourneyStatus {
     ALARMING,
     ACKNOWLEDGED,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    PAUSED,
+    RECOVERY
 }
 
 @Entity(tableName = "journeys")

@@ -59,9 +59,20 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- Google Mobile Ads SDK Application ID (AdMob sample test app ID) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713"/>
+
         <!-- Scheduled Reminder Broadcast Receiver -->
         <receiver
             android:name="com.example.travelwake.data.repository.ReminderBroadcastReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Background Local Notification Receiver -->
+        <receiver
+            android:name="com.example.travelwake.notification.LocalNotificationReceiver"
             android:enabled="true"
             android:exported="false" />
 

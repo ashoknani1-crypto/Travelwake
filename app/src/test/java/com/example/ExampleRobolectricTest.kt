@@ -125,5 +125,120 @@ class ExampleRobolectricTest {
         )
         assertEquals(3, infoNear.pollingIntervalSeconds)
     }
+
+    @Test
+    fun `test custom distance formatting and thresholds`() {
+        val customDistanceMeters = 350
+        val formatted = LocationEngine.formatDistance(customDistanceMeters)
+        assertEquals("350 m", formatted)
+
+        val customFarMeters = 7500
+        val formattedFar = LocationEngine.formatDistance(customFarMeters)
+        assertEquals("7.5 km", formattedFar)
+    }
+
+    @Test
+    fun `test glassmorphism theme configuration and colors`() {
+        val glassPalette = com.example.travelwake.theme.WeatherThemeEngine.GlassmorphismPalette
+        assertNotNull(glassPalette)
+        assertEquals(com.example.travelwake.theme.WeatherThemeType.GLASSMORPHISM, glassPalette.themeType)
+        assertEquals(com.example.ui.theme.BrightCyan, glassPalette.primaryColor)
+        assertEquals(com.example.ui.theme.DeepNavyDark, glassPalette.backgroundColor)
+        assertEquals(com.example.ui.theme.DarkNavySurface, glassPalette.surfaceColor)
+        assertEquals(com.example.ui.theme.GlassNavyBorder, glassPalette.borderColor)
+    }
+
+    @Test
+    fun `test user profile with provider and photo url`() {
+        val profile = com.example.travelwake.data.model.UserProfile(
+            uid = "google_user_123",
+            email = "ashokmuddam5@gmail.com",
+            displayName = "Ashok",
+            photoUrl = "https://lh3.googleusercontent.com/a/photo",
+            isAnonymous = false,
+            provider = "google.com"
+        )
+        assertEquals("google_user_123", profile.uid)
+        assertEquals("ashokmuddam5@gmail.com", profile.email)
+        assertEquals("Ashok", profile.displayName)
+        assertEquals("https://lh3.googleusercontent.com/a/photo", profile.photoUrl)
+        assertEquals(false, profile.isAnonymous)
+        assertEquals("google.com", profile.provider)
+    }
+
+    @Test
+    fun `test custom material 3 glassmorphism light and dark color schemes`() {
+        val lightScheme = com.example.ui.theme.TravelWakeGlassmorphicLightColorScheme
+        val darkScheme = com.example.ui.theme.TravelWakeGlassmorphicDarkColorScheme
+
+        assertNotNull(lightScheme)
+        assertNotNull(darkScheme)
+
+        // Verify deep navy primary colors
+        assertEquals(com.example.ui.theme.DeepNavyMidnight, lightScheme.primary)
+        assertEquals(com.example.ui.theme.BrightCyan, darkScheme.primary)
+
+        // Verify translucent surface backgrounds
+        assertEquals(androidx.compose.ui.graphics.Color(0xF2FFFFFF), lightScheme.surface)
+        assertEquals(com.example.ui.theme.GlassNavySurface, darkScheme.surface)
+        assertEquals(com.example.ui.theme.GlassNavyCard, darkScheme.surfaceVariant)
+
+        // Verify deep navy dark background
+        assertEquals(com.example.ui.theme.DeepNavyDark, darkScheme.background)
+    }
+
+    @Test
+    fun `test weather repository graceful fallback implementation`() {
+        val weatherRepo = com.example.travelwake.data.repository.WeatherRepository()
+        val fallback = weatherRepo.getFallbackWeather("Berlin Central", 52.5200, 13.4050)
+        assertNotNull(fallback)
+        assertTrue(fallback.temperatureCelsius in -10..45)
+        assertNotNull(fallback.condition)
+        assertTrue(fallback.recommendations.isNotEmpty())
+    }
+
+    @Test
+    fun `test notification manager channels and instance creation`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val notifManager = com.example.travelwake.notification.TravelWakeNotificationManager.getInstance(context)
+        assertNotNull(notifManager)
+
+        // Verify channel creation
+        val systemNotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val scheduledChannel = systemNotificationManager.getNotificationChannel(
+            com.example.travelwake.notification.TravelWakeNotificationManager.CHANNEL_SCHEDULED_ALERTS
+        )
+        assertNotNull(scheduledChannel)
+        assertEquals(android.app.NotificationManager.IMPORTANCE_HIGH, scheduledChannel.importance)
+
+        val progressiveChannel = systemNotificationManager.getNotificationChannel(
+            com.example.travelwake.notification.TravelWakeNotificationManager.CHANNEL_PROGRESSIVE_ALARMS
+        )
+        assertNotNull(progressiveChannel)
+        assertEquals(android.app.NotificationManager.IMPORTANCE_HIGH, progressiveChannel.importance)
+    }
+
+    @Test
+    fun `test offline-first room repositories for essentials, tasks, and packing items`() = kotlinx.coroutines.runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = com.example.travelwake.data.local.AppDatabase.getInstance(context)
+
+        val todoRepo = com.example.travelwake.data.repository.TodoRepository(db.todoDao())
+        val packRepo = com.example.travelwake.data.repository.PackItemRepository(db.packItemDao())
+
+        // Insert and read todo item
+        val todo = todoRepo.addTodo("Verify Passport and Visa", isPreTrip = true, priority = 1)
+        assertNotNull(todo.id)
+        val todos = todoRepo.allTodos
+        assertNotNull(todos)
+
+        // Insert and read pack item
+        val packItem = packRepo.addPackItem("Power Bank 20,000mAh", "Electronics", essential = true)
+        assertNotNull(packItem.id)
+        assertTrue(packItem.essential)
+
+        // Toggle packed state
+        packRepo.togglePacked(packItem.id, true)
+    }
 }
 

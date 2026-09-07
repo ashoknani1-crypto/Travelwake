@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -37,12 +38,18 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +72,11 @@ import com.example.ui.theme.AlarmRedContainer
 import com.example.ui.theme.AlertAmber
 import com.example.ui.theme.AlertAmberContainer
 import com.example.ui.theme.BrightCyan
+import com.example.ui.theme.DarkNavyCard
+import com.example.ui.theme.GlassNavyBorder
+import com.example.ui.theme.GlassNavyCard
+import com.example.ui.theme.LocalGlassmorphismStyle
+import com.example.ui.theme.blurredCardElevation
 import com.example.ui.theme.ProfessionalBackground
 import com.example.ui.theme.ProfessionalBorder
 import com.example.ui.theme.ProfessionalDivider
@@ -80,27 +92,45 @@ import com.example.ui.theme.SafetyGreen
 import com.example.ui.theme.SafetyGreenContainer
 
 /**
- * Reusable Card component styled with the Professional Polish aesthetic
- * (Pure white / light surface, rounded-3xl / 24dp, subtle border #C4C6D0, soft elevation)
+ * Reusable Card component implementing the 'Premium Glassmorphism' surface
+ * (translucent frosted surfaces, specular borders, and deep navy backdrop support).
  */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
-    backgroundColor: Color = ProfessionalSurface,
-    borderColor: Color = ProfessionalBorder,
+    backgroundColor: Color? = null,
+    borderColor: Color? = null,
     cornerRadius: Int = 24,
     content: @Composable () -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.background.value == com.example.ui.theme.DeepNavyDark.value ||
+            MaterialTheme.colorScheme.surface.value == com.example.ui.theme.DarkNavySurface.value ||
+            MaterialTheme.colorScheme.surface.value == com.example.ui.theme.GlassNavySurface.value
+    val resolvedBg = backgroundColor ?: if (isDark) GlassNavyCard else ProfessionalSurface
+    val resolvedBorder = borderColor ?: if (isDark) GlassNavyBorder else ProfessionalBorder
+
+    val cardShape = RoundedCornerShape(cornerRadius.dp)
+    val cardModifier = if (isDark) {
+        modifier.blurredCardElevation(
+            elevation = 8.dp,
+            shape = cardShape,
+            shadowTint = com.example.ui.theme.DeepNavyAbyss,
+            accentGlow = BrightCyan
+        )
+    } else {
+        modifier
+    }
+
     Surface(
-        modifier = modifier
-            .clip(RoundedCornerShape(cornerRadius.dp))
+        modifier = cardModifier
+            .clip(cardShape)
             .border(
-                BorderStroke(1.dp, borderColor),
-                RoundedCornerShape(cornerRadius.dp)
+                BorderStroke(1.dp, resolvedBorder),
+                cardShape
             ),
-        color = backgroundColor,
-        shape = RoundedCornerShape(cornerRadius.dp),
-        shadowElevation = 1.dp
+        color = resolvedBg,
+        shape = cardShape,
+        shadowElevation = if (isDark) 0.dp else 2.dp
     ) {
         Box(modifier = Modifier.padding(18.dp)) {
             content()
@@ -330,6 +360,9 @@ fun AlertDistanceSelector(
     modifier: Modifier = Modifier
 ) {
     val presets = listOf(100, 250, 500, 750, 1000, 2000)
+    var showCustomDialog by remember { mutableStateOf(false) }
+    var customInputText by remember { mutableStateOf(selectedMeters.toString()) }
+    val isCustomActive = selectedMeters !in presets
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -360,7 +393,7 @@ fun AlertDistanceSelector(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Preset chips row
+        // Preset chips row including "Custom" chip
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -392,16 +425,43 @@ fun AlertDistanceSelector(
                     )
                 }
             }
+
+            // Custom distance chip
+            val customBg = if (isCustomActive) ProfessionalPrimary else ProfessionalSurfaceVariant
+            val customBorder = if (isCustomActive) ProfessionalPrimary else ProfessionalBorder
+            val customTextColor = if (isCustomActive) Color.White else ProfessionalTextPrimary
+
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(BorderStroke(1.dp, customBorder), RoundedCornerShape(14.dp))
+                    .clickable {
+                        customInputText = selectedMeters.toString()
+                        showCustomDialog = true
+                    }
+                    .testTag("distance_preset_custom"),
+                color = customBg,
+                shape = RoundedCornerShape(14.dp),
+                shadowElevation = if (isCustomActive) 2.dp else 0.dp
+            ) {
+                Text(
+                    text = if (isCustomActive) "Custom (${LocationEngine.formatDistance(selectedMeters)})" else "Custom...",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = customTextColor,
+                    fontWeight = if (isCustomActive) FontWeight.Bold else FontWeight.Medium
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         // Fine tuning slider
         Slider(
-            value = selectedMeters.toFloat(),
+            value = selectedMeters.toFloat().coerceIn(50f, 5000f),
             onValueChange = { onDistanceSelected(it.toInt()) },
-            valueRange = 100f..3000f,
-            steps = 28,
+            valueRange = 50f..5000f,
+            steps = 98,
             colors = SliderDefaults.colors(
                 thumbColor = ProfessionalPrimary,
                 activeTrackColor = ProfessionalPrimary,
@@ -410,6 +470,51 @@ fun AlertDistanceSelector(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("distance_slider")
+        )
+    }
+
+    if (showCustomDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomDialog = false },
+            title = {
+                Text("Set Custom Alert Distance", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text("Enter wake-up distance in meters (50m - 10,000m):", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = customInputText,
+                        onValueChange = { customInputText = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("Meters") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ProfessionalPrimary,
+                            unfocusedBorderColor = ProfessionalBorder
+                        ),
+                        modifier = Modifier.fillMaxWidth().testTag("custom_distance_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val entered = customInputText.toIntOrNull()
+                        if (entered != null && entered in 50..10000) {
+                            onDistanceSelected(entered)
+                            showCustomDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ProfessionalPrimary)
+                ) {
+                    Text("Apply", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomDialog = false }) {
+                    Text("Cancel", color = ProfessionalTextSecondary)
+                }
+            }
         )
     }
 }

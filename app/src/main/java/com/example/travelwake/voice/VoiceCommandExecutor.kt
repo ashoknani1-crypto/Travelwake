@@ -1,21 +1,25 @@
 package com.example.travelwake.voice
 
 import android.util.Log
+import com.example.travelwake.data.model.JourneyStatus
 import com.example.travelwake.data.model.PackItem
 import com.example.travelwake.data.model.TodoItem
 import com.example.travelwake.data.repository.PackItemRepository
 import com.example.travelwake.data.repository.ReminderRepository
 import com.example.travelwake.data.repository.TodoRepository
+import com.example.travelwake.state.JourneyStateMachine
 import kotlinx.coroutines.flow.first
 
 /**
  * Executes strongly-typed Voice Commands against the application repositories.
- * Fully isolated from the GPS / Alarm lifecycle to guarantee safety.
+ * Fully isolated from the GPS / Alarm lifecycle to guarantee safety,
+ * with state validation provided by [JourneyStateMachine].
  */
 class VoiceCommandExecutor(
     private val todoRepository: TodoRepository,
     private val packItemRepository: PackItemRepository,
     private val reminderRepository: ReminderRepository,
+    private val journeyStateMachine: JourneyStateMachine? = null,
     private val onSnoozeAlarm: (Int) -> Unit,
     private val onCancelAlarm: () -> Unit,
     private val onSetAlarmDistance: (Int) -> Unit,
@@ -319,23 +323,43 @@ class VoiceCommandExecutor(
             // JOURNEY & ALARM CONTROLS
             // ------------------------------------
             is VoiceCommand.SnoozeAlarm -> {
-                onSnoozeAlarm(command.minutes)
-                VoiceExecutionResult(
-                    success = true,
-                    spokenFeedback = "Alarm snoozed for ${command.minutes} minutes.",
-                    visualDisplay = "💤 Snoozed for ${command.minutes}m",
-                    command = command
-                )
+                val currentState = journeyStateMachine?.currentState?.value
+                if (currentState != null && currentState != JourneyStatus.ALARMING) {
+                    VoiceExecutionResult(
+                        success = false,
+                        spokenFeedback = "Cannot snooze alarm. There is no active alarm sounding.",
+                        visualDisplay = "⚠️ No active alarm to snooze",
+                        command = command
+                    )
+                } else {
+                    onSnoozeAlarm(command.minutes)
+                    VoiceExecutionResult(
+                        success = true,
+                        spokenFeedback = "Alarm snoozed for ${command.minutes} minutes.",
+                        visualDisplay = "💤 Snoozed for ${command.minutes}m",
+                        command = command
+                    )
+                }
             }
 
             is VoiceCommand.CancelAlarm -> {
-                onCancelAlarm()
-                VoiceExecutionResult(
-                    success = true,
-                    spokenFeedback = "Arrival acknowledged. Alarm cancelled.",
-                    visualDisplay = "🛑 Alarm cancelled",
-                    command = command
-                )
+                val currentState = journeyStateMachine?.currentState?.value
+                if (currentState != null && currentState != JourneyStatus.ALARMING && currentState != JourneyStatus.APPROACHING) {
+                    VoiceExecutionResult(
+                        success = false,
+                        spokenFeedback = "No active alarm to cancel.",
+                        visualDisplay = "⚠️ No active alarm",
+                        command = command
+                    )
+                } else {
+                    onCancelAlarm()
+                    VoiceExecutionResult(
+                        success = true,
+                        spokenFeedback = "Arrival acknowledged. Alarm cancelled.",
+                        visualDisplay = "🛑 Alarm cancelled",
+                        command = command
+                    )
+                }
             }
 
             is VoiceCommand.SetAlarmDistance -> {
@@ -349,13 +373,23 @@ class VoiceCommandExecutor(
             }
 
             is VoiceCommand.StartJourney -> {
-                onStartJourney()
-                VoiceExecutionResult(
-                    success = true,
-                    spokenFeedback = "Starting journey monitoring.",
-                    visualDisplay = "🚀 Journey started",
-                    command = command
-                )
+                val currentState = journeyStateMachine?.currentState?.value
+                if (currentState != null && !journeyStateMachine.canStartJourney()) {
+                    VoiceExecutionResult(
+                        success = false,
+                        spokenFeedback = "Journey is already active. Current state: ${currentState.name.lowercase()}.",
+                        visualDisplay = "⚠️ Journey already active (${currentState.name})",
+                        command = command
+                    )
+                } else {
+                    onStartJourney()
+                    VoiceExecutionResult(
+                        success = true,
+                        spokenFeedback = "Starting journey monitoring.",
+                        visualDisplay = "🚀 Journey started",
+                        command = command
+                    )
+                }
             }
 
             is VoiceCommand.GetDestination -> {

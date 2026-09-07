@@ -85,6 +85,7 @@ import com.example.travelwake.ai.GeminiPackingSuggestion
 import com.example.travelwake.data.model.PackingCategory
 import com.example.travelwake.data.model.SmartPackingPresets
 import com.example.travelwake.data.model.WeatherInfo
+import com.example.travelwake.ui.ads.NonIntrusiveBannerAd
 import com.example.travelwake.ui.components.GeminiPackingAssistantCard
 import com.example.travelwake.ui.components.VoiceCommandDialog
 import com.example.travelwake.utils.BelongingsShareHelper
@@ -359,11 +360,20 @@ fun BelongingsScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         // Content for Each Tab
-        when (selectedTabIndex) {
-            0 -> PackingListTabContent(viewModel, belongings, packItems, destination?.name, weather, tripDuration, geminiSuggestions, isGeneratingPacking, geminiNotice, context)
-            1 -> TasksTabContent(viewModel, todos)
-            2 -> RemindersTabContent(viewModel, reminders)
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedTabIndex) {
+                0 -> PackingListTabContent(viewModel, belongings, packItems, destination?.name, weather, tripDuration, geminiSuggestions, isGeneratingPacking, geminiNotice, context)
+                1 -> TasksTabContent(viewModel, todos)
+                2 -> RemindersTabContent(viewModel, reminders)
+            }
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Non-intrusive banner ad placed safely at the base of the checklists
+        NonIntrusiveBannerAd(
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 
     if (showVoiceModal) {

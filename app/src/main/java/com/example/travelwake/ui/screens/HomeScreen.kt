@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import com.example.travelwake.data.model.DestinationItem
 import com.example.travelwake.data.model.JourneyStatus
 import com.example.travelwake.data.model.SavedPlaceEntity
+import com.example.travelwake.ui.ads.NonIntrusiveBannerAd
 import com.example.travelwake.ui.components.GlassCard
 import com.example.travelwake.ui.components.TravelWakeButton
 import com.example.travelwake.ui.components.WeatherRecommendationCard
@@ -748,6 +749,13 @@ fun HomeScreen(
             containerColor = ProfessionalPrimary,
             contentColor = Color.White,
             testTag = "start_journey_main_cta"
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Non-intrusive banner ad placed safely at bottom, without interfering with transit/alarm buttons
+        NonIntrusiveBannerAd(
+            modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(30.dp))

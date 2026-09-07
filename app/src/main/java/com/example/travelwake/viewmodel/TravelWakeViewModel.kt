@@ -20,6 +20,7 @@ import com.example.travelwake.data.model.UserProfile
 import com.example.travelwake.data.model.WeatherInfo
 import com.example.travelwake.data.repository.BelongingsRepository
 import com.example.travelwake.data.repository.TravelDestinationRepository
+import com.example.travelwake.data.repository.WeatherRepository
 import com.example.travelwake.data.weather.ArrivalWeatherForecast
 import com.example.travelwake.data.weather.WeatherApiService
 import com.example.travelwake.engine.AlarmEngine
@@ -37,10 +38,12 @@ import com.example.travelwake.data.model.AppThemeMode
 import com.example.travelwake.data.model.CautionLevel
 import com.example.travelwake.data.model.PackItem
 import com.example.travelwake.data.model.PackingCategory
+import com.example.travelwake.data.firebase.AuthResult
 import com.example.travelwake.data.model.Reminder
 import com.example.travelwake.data.model.SevereWeatherAlert
 import com.example.travelwake.data.model.SmartPackingPresets
 import com.example.travelwake.data.model.SmartPackingTemplate
+import com.example.travelwake.state.JourneyStateMachine
 import com.example.travelwake.data.model.TodoItem
 import com.example.travelwake.data.repository.PackItemRepository
 import com.example.travelwake.data.repository.ReminderRepository
@@ -74,6 +77,7 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
     private val destinationRepo = TravelDestinationRepository(db.travelDestinationDao())
     private val belongingsRepo = BelongingsRepository(db.belongingDao())
     private val weatherApiService = WeatherApiService()
+    val weatherRepo = WeatherRepository(weatherApiService)
     private val firebaseRepo = FirebaseRepository(application)
     private val geminiRepo = GeminiRepository()
     private val alarmEngine = AlarmEngine(application)
@@ -137,6 +141,10 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
     val packRepo = PackItemRepository(db.packItemDao())
     val reminderRepo = ReminderRepository(db.reminderDao(), application)
 
+    // Journey State Machine
+    val journeyStateMachine = JourneyStateMachine(JourneyStatus.IDLE)
+    val journeyState: StateFlow<JourneyStatus> = journeyStateMachine.currentState
+
     val allTodos: StateFlow<List<TodoItem>> = todoRepo.allTodos
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -156,6 +164,7 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
         todoRepository = todoRepo,
         packItemRepository = packRepo,
         reminderRepository = reminderRepo,
+        journeyStateMachine = journeyStateMachine,
         onSnoozeAlarm = { mins -> snoozeAlarm(mins) },
         onCancelAlarm = { acknowledgeAlarm() },
         onSetAlarmDistance = { dist -> setAlertDistance(dist) },
@@ -184,8 +193,14 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
     private val _themeMode = MutableStateFlow<AppThemeMode>(AppThemeMode.SYSTEM)
     val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
 
-    // Auth state
+    // Auth state & User session persistence
     val currentUser: StateFlow<UserProfile?> = firebaseRepo.currentUser
+
+    private val _isAuthLoading = MutableStateFlow(false)
+    val isAuthLoading: StateFlow<Boolean> = _isAuthLoading.asStateFlow()
+
+    private val _authStatusMessage = MutableStateFlow<String?>(null)
+    val authStatusMessage: StateFlow<String?> = _authStatusMessage.asStateFlow()
 
     // Room flows
     val allJourneys: StateFlow<List<JourneyEntity>> = db.journeyDao().getAllJourneys()
@@ -200,9 +215,10 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
     val belongings: StateFlow<List<BelongingEntity>> = belongingsRepo.allBelongings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Journey State
-    private val _journeyState = MutableStateFlow(JourneyStatus.IDLE)
-    val journeyState: StateFlow<JourneyStatus> = _journeyState.asStateFlow()
+    // Helper method to transition state machine safely
+    fun transitionJourneyState(newStatus: JourneyStatus): Boolean {
+        return journeyStateMachine.transitionTo(newStatus)
+    }
 
     private val _selectedDestination = MutableStateFlow<DestinationItem?>(null)
     val selectedDestination: StateFlow<DestinationItem?> = _selectedDestination.asStateFlow()
@@ -275,6 +291,16 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _preAlarmMessage = MutableStateFlow<String?>(null)
     val preAlarmMessage: StateFlow<String?> = _preAlarmMessage.asStateFlow()
+
+    // GPS Signal & Backup Timer state
+    private val _isGpsUnavailable = MutableStateFlow(false)
+    val isGpsUnavailable: StateFlow<Boolean> = _isGpsUnavailable.asStateFlow()
+
+    private val _backupTimerRemainingSeconds = MutableStateFlow(0)
+    val backupTimerRemainingSeconds: StateFlow<Int> = _backupTimerRemainingSeconds.asStateFlow()
+
+    private var backupArrivalJob: Job? = null
+    private var lastGpsUpdateTimestamp: Long = 0L
 
     private var journeySimulationJob: Job? = null
     private var activeJourneyId: String = ""
@@ -417,7 +443,7 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
 
     fun selectDestination(item: DestinationItem) {
         _selectedDestination.value = item
-        _journeyState.value = JourneyStatus.DESTINATION_SELECTED
+        journeyStateMachine.transitionTo(JourneyStatus.DESTINATION_SELECTED)
 
         // Calculate initial distance from current location
         val curLoc = locationEngine.currentLocation.value
@@ -490,10 +516,10 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun refreshArrivalWeatherForecast(lat: Double, lon: Double, arrivalMs: Long, destName: String) {
         viewModelScope.launch {
-            val forecast = weatherApiService.getForecastForArrivalTime(lat, lon, arrivalMs, destName)
+            val forecast = weatherRepo.getArrivalForecast(lat, lon, arrivalMs, destName)
             _arrivalWeatherForecast.value = forecast
 
-            val fallbackInfo = WeatherEngine.generateWeatherForDestination(destName, lat, lon)
+            val fallbackInfo = weatherRepo.getFallbackWeather(destName, lat, lon)
             val updatedWeather = fallbackInfo.copy(
                 temperatureCelsius = forecast.temperatureCelsius,
                 condition = forecast.condition,
@@ -619,7 +645,14 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
         val dest = _selectedDestination.value ?: return
         activeJourneyId = UUID.randomUUID().toString()
         journeyStartTime = System.currentTimeMillis()
-        _journeyState.value = JourneyStatus.ACTIVE
+        journeyStateMachine.transitionTo(JourneyStatus.ACTIVE)
+
+        // Reset progressive alarm latches in AlarmEngine for new journey
+        alarmEngine.resetThresholds()
+        _isGpsUnavailable.value = false
+        _backupTimerRemainingSeconds.value = 0
+        lastGpsUpdateTimestamp = System.currentTimeMillis()
+        backupArrivalJob?.cancel()
 
         // Record journey start origin coordinates for progress bar calculation
         _originLatitude.value = _currentUserLatitude.value
@@ -689,6 +722,17 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
         _etaMinutes.value = LocationEngine.calculateEtaMinutes(meters, _transportMode.value)
         val alertDist = _alertDistanceMeters.value
 
+        // Record GPS update timestamp and restore normal active state if previously in recovery
+        lastGpsUpdateTimestamp = System.currentTimeMillis()
+        if (_isGpsUnavailable.value) {
+            _isGpsUnavailable.value = false
+            backupArrivalJob?.cancel()
+            _backupTimerRemainingSeconds.value = 0
+            if (_journeyState.value == JourneyStatus.RECOVERY) {
+                _journeyState.value = JourneyStatus.ACTIVE
+            }
+        }
+
         // Update real-time GPS position coordinates towards destination for MapView visualization
         val dest = _selectedDestination.value
         if (dest != null) {
@@ -700,30 +744,104 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
             _currentUserLongitude.value = originLon + (dest.longitude - originLon) * progress
         }
 
-        // Check progressive pre-alarm warnings
-        when {
-            meters in 950..1050 -> {
-                _preAlarmMessage.value = "Destination approaching: 1 km remaining"
+        // DETERMINISTIC PROGRESSIVE ALERTS (Fires at most once per journey per threshold)
+        if (_progressiveAlarmEnabled.value) {
+            // 1. 1 km Gentle Notification
+            if (meters <= 1000 && !triggered1000m && alertDist < 1000) {
+                triggered1000m = true
+                _preAlarmMessage.value = "1 km to destination — Prepare your belongings"
                 alarmEngine.triggerPreAlarmChime()
             }
-            meters in 700..800 -> {
-                _preAlarmMessage.value = "Getting closer: 750 m remaining"
+
+            // 2. 750 m Light Vibration & Notification
+            if (meters <= 750 && !triggered750m && alertDist < 750) {
+                triggered750m = true
+                _preAlarmMessage.value = "750 m remaining — Next stop approaching"
                 alarmEngine.triggerPreAlarmChime()
             }
-            meters in (alertDist - 50)..alertDist -> {
-                _preAlarmMessage.value = "WAKE UP SOON: $alertDist m remaining"
+
+            // 3. User Alert Distance (e.g. 500m default) -> MAIN ALARM
+            if (meters <= alertDist && !triggered500m && (_journeyState.value == JourneyStatus.ACTIVE || _journeyState.value == JourneyStatus.APPROACHING || _journeyState.value == JourneyStatus.RECOVERY)) {
+                triggered500m = true
+                _preAlarmMessage.value = "WAKE UP! Your destination is $alertDist m away"
+                _journeyState.value = JourneyStatus.ALARMING
+                alarmEngine.triggerMainAlarm(soundEnabled = _alarmSoundEnabled.value, vibrateEnabled = _alarmVibrationEnabled.value)
+                JourneyMonitoringService.updateService(getApplication(), meters, _etaMinutes.value, true)
+            }
+
+            // 4. 300 m Escalated Warning
+            if (meters <= 300 && !triggered300m) {
+                triggered300m = true
+                _preAlarmMessage.value = "🚨 300m! Disembarkation imminent — Gather luggage now"
+                if (_journeyState.value != JourneyStatus.ALARMING && _journeyState.value != JourneyStatus.ACKNOWLEDGED) {
+                    _journeyState.value = JourneyStatus.ALARMING
+                    alarmEngine.triggerMainAlarm(soundEnabled = _alarmSoundEnabled.value, vibrateEnabled = _alarmVibrationEnabled.value)
+                }
+            }
+
+            // 5. 100 m Final Warning
+            if (meters <= 100 && !triggered100m) {
+                triggered100m = true
+                _preAlarmMessage.value = "🚨 FINAL STOP: 100m to destination platform"
+                if (_journeyState.value != JourneyStatus.ACKNOWLEDGED) {
+                    alarmEngine.triggerMainAlarm(soundEnabled = true, vibrateEnabled = true)
+                }
+            }
+        } else {
+            // Standard single-threshold alarm
+            if (meters <= alertDist && _journeyState.value == JourneyStatus.ACTIVE) {
+                _journeyState.value = JourneyStatus.ALARMING
+                alarmEngine.triggerMainAlarm(soundEnabled = _alarmSoundEnabled.value, vibrateEnabled = _alarmVibrationEnabled.value)
+                JourneyMonitoringService.updateService(getApplication(), meters, _etaMinutes.value, true)
             }
         }
 
-        // Trigger Main Alarm when within alert threshold!
-        if (meters <= alertDist && _journeyState.value == JourneyStatus.ACTIVE) {
-            _journeyState.value = JourneyStatus.ALARMING
-            alarmEngine.triggerMainAlarm()
-            JourneyMonitoringService.updateService(getApplication(), meters, _etaMinutes.value, true)
-        } else if (meters <= alertDist * 1.5) {
-            JourneyMonitoringService.updateService(getApplication(), meters, _etaMinutes.value, true)
-        } else {
-            JourneyMonitoringService.updateService(getApplication(), meters, _etaMinutes.value, false)
+        val isApproaching = meters <= alertDist * 1.5
+        if (_journeyState.value == JourneyStatus.ACTIVE && isApproaching) {
+            _journeyState.value = JourneyStatus.APPROACHING
+        }
+        JourneyMonitoringService.updateService(getApplication(), meters, _etaMinutes.value, isApproaching)
+    }
+
+    fun pauseJourney() {
+        if (_journeyState.value == JourneyStatus.ACTIVE || _journeyState.value == JourneyStatus.APPROACHING) {
+            _journeyState.value = JourneyStatus.PAUSED
+            _preAlarmMessage.value = "Journey paused"
+        }
+    }
+
+    fun resumeJourney() {
+        if (_journeyState.value == JourneyStatus.PAUSED) {
+            _journeyState.value = JourneyStatus.ACTIVE
+            _preAlarmMessage.value = null
+        }
+    }
+
+    fun notifyGpsSignalLost() {
+        if (_journeyState.value == JourneyStatus.ACTIVE || _journeyState.value == JourneyStatus.APPROACHING) {
+            _journeyState.value = JourneyStatus.RECOVERY
+            _isGpsUnavailable.value = true
+            _preAlarmMessage.value = "GPS temporarily unavailable — Running backup arrival timer"
+
+            // Start countdown based on last known ETA
+            val secondsRemaining = (_etaMinutes.value * 60).coerceAtLeast(60)
+            _backupTimerRemainingSeconds.value = secondsRemaining
+
+            backupArrivalJob?.cancel()
+            backupArrivalJob = viewModelScope.launch {
+                var remaining = secondsRemaining
+                while (remaining > 0 && _isGpsUnavailable.value && _journeyState.value == JourneyStatus.RECOVERY) {
+                    delay(1000L)
+                    remaining--
+                    _backupTimerRemainingSeconds.value = remaining
+                }
+                // If timer expires without GPS recovery, fire backup safety alarm!
+                if (_isGpsUnavailable.value && (_journeyState.value == JourneyStatus.RECOVERY || _journeyState.value == JourneyStatus.ACTIVE)) {
+                    _journeyState.value = JourneyStatus.ALARMING
+                    _preAlarmMessage.value = "BACKUP ALARM: Estimated arrival time reached!"
+                    alarmEngine.triggerMainAlarm(soundEnabled = _alarmSoundEnabled.value, vibrateEnabled = _alarmVibrationEnabled.value)
+                }
+            }
         }
     }
 
@@ -971,15 +1089,48 @@ class TravelWakeViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // Google Sign-in simulation / Firebase
+    // Google Sign-in via Android Credential Manager & Firebase Auth
+    fun signInWithCredentialManager(
+        context: android.content.Context,
+        serverClientId: String = "123456789012-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com",
+        onCompleted: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isAuthLoading.value = true
+            _authStatusMessage.value = "Connecting with Google..."
+            val result = firebaseRepo.signInWithGoogleCredentialManager(context, serverClientId)
+            _isAuthLoading.value = false
+            when (result) {
+                is AuthResult.Success -> {
+                    _authStatusMessage.value = "Signed in as ${result.user.displayName}"
+                    onCompleted(true)
+                }
+                is AuthResult.Error -> {
+                    _authStatusMessage.value = result.message
+                    onCompleted(false)
+                }
+                is AuthResult.Cancelled -> {
+                    _authStatusMessage.value = "Sign-in cancelled"
+                    onCompleted(false)
+                }
+            }
+        }
+    }
+
+    // Google Sign-in simulation / Direct sign-in fallback
     fun signInWithGoogle(email: String = "ashokmuddam5@gmail.com") {
         viewModelScope.launch {
+            _isAuthLoading.value = true
+            _authStatusMessage.value = "Authenticating session..."
             firebaseRepo.signInWithGoogleDemo(email)
+            _isAuthLoading.value = false
+            _authStatusMessage.value = "Active session: $email"
         }
     }
 
     fun signOut() {
         firebaseRepo.signOut()
+        _authStatusMessage.value = "Signed out"
     }
 
     // Security Lab / Simulation mode (Section 51 of DESIGN.md)

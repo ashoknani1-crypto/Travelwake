@@ -6,6 +6,7 @@ import com.example.travelwake.data.model.BelongingEntity
 import com.example.travelwake.data.model.SavedPlaceEntity
 import com.example.travelwake.data.model.TransportMode
 import com.example.travelwake.data.model.TravelDestinationEntity
+import com.example.travelwake.ui.ads.AdMobPlatformManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -13,6 +14,9 @@ import kotlinx.coroutines.launch
 class TravelWakeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize Google Mobile Ads SDK
+        AdMobPlatformManager.initialize(this)
 
         // Pre-populate default belongings, sample saved places, and travel destinations if empty
         val db = AppDatabase.getInstance(this)

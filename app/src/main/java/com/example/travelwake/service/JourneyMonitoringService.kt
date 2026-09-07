@@ -12,6 +12,7 @@ import android.location.Location
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.VibrationEffect
@@ -244,6 +245,29 @@ class JourneyMonitoringService : Service() {
     private var hapticProfileId = HapticFeedbackProfile.ESCALATING_PULSE.id
     private var isAlarmTriggered = false
 
+    // Deterministic Progressive Alert Latching (Each fires at most once per journey)
+    private var triggeredService1000m = false
+    private var triggeredService750m = false
+    private var triggeredServiceAlertDist = false
+    private var triggeredService300m = false
+    private var triggeredService100m = false
+
+    // GPS Loss Detection (>45s without GPS fix)
+    private var lastGpsFixTime = 0L
+    private var isGpsLost = false
+    private var gpsWatchdogHandler: Handler? = null
+    private val gpsWatchdogRunnable = object : Runnable {
+        override fun run() {
+            val now = System.currentTimeMillis()
+            if (lastGpsFixTime > 0L && (now - lastGpsFixTime > 45_000L) && !isGpsLost) {
+                isGpsLost = true
+                Log.w(TAG, "GPS signal lost for >45 seconds. Transitioning to RECOVERY.")
+                notifyGpsLostToUser()
+            }
+            gpsWatchdogHandler?.postDelayed(this, 10_000L)
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -295,6 +319,16 @@ class JourneyMonitoringService : Service() {
                 hapticProfileId = intent.getStringExtra(EXTRA_HAPTIC_PROFILE) ?: hapticProfileId
                 intent.getStringExtra(EXTRA_DESTINATION_TRAVEL_TIPS)?.let { destinationTravelTips = it }
                 batterySavingModeEnabled = intent.getBooleanExtra(EXTRA_BATTERY_SAVER_ENABLED, batterySavingModeEnabled)
+
+                // Reset progressive latching and GPS loss states
+                triggeredService1000m = false
+                triggeredService750m = false
+                triggeredServiceAlertDist = false
+                triggeredService300m = false
+                triggeredService100m = false
+                isAlarmTriggered = false
+                isGpsLost = false
+                lastGpsFixTime = System.currentTimeMillis()
 
                 startForeground(MONITOR_NOTIF_ID, buildMonitoringNotification())
                 startLocationTracking()
@@ -365,7 +399,38 @@ class JourneyMonitoringService : Service() {
     }
 
     private fun startLocationTracking() {
+        lastGpsFixTime = System.currentTimeMillis()
+        isGpsLost = false
+        if (gpsWatchdogHandler == null) {
+            gpsWatchdogHandler = Handler(Looper.getMainLooper())
+            gpsWatchdogHandler?.postDelayed(gpsWatchdogRunnable, 10_000L)
+        }
         applyAdaptivePolling(force = true)
+    }
+
+    private fun notifyGpsLostToUser() {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val openIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            5,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val lostNotification = NotificationCompat.Builder(this, MONITORING_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("⚠️ GPS Signal Lost — Backup Timer Active")
+            .setContentText("Estimated arrival safety timer is maintaining monitoring for $destinationName.")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "GPS signal has been unavailable for >45s. TravelWake is tracking your expected arrival time (~$etaMinutes min remaining) using an automatic safety timer so you won't miss your stop."
+                )
+            )
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        manager.notify(MONITOR_NOTIF_ID, lostNotification)
     }
 
     private fun applyAdaptivePolling(force: Boolean = false) {
@@ -456,6 +521,12 @@ class JourneyMonitoringService : Service() {
     }
 
     private fun handleLocationUpdate(location: Location) {
+        lastGpsFixTime = System.currentTimeMillis()
+        if (isGpsLost) {
+            isGpsLost = false
+            Log.i(TAG, "GPS signal recovered! Returning to active monitoring.")
+        }
+
         val results = FloatArray(1)
         Location.distanceBetween(
             location.latitude,
@@ -477,7 +548,23 @@ class JourneyMonitoringService : Service() {
     }
 
     private fun checkAndTriggerAlarmIfNeeded() {
-        if (distanceMeters <= alertDistanceMeters && !isAlarmTriggered) {
+        // Progressive Alert 1: 1 km single-shot pre-alert
+        if (distanceMeters <= 1000 && !triggeredService1000m && alertDistanceMeters < 1000) {
+            triggeredService1000m = true
+            isApproaching = true
+            triggerProgressiveAlertNotification("1 km Remaining", "Approaching destination. Prepare your belongings.")
+        }
+
+        // Progressive Alert 2: 750 m single-shot pre-alert
+        if (distanceMeters <= 750 && !triggeredService750m && alertDistanceMeters < 750) {
+            triggeredService750m = true
+            isApproaching = true
+            triggerProgressiveAlertNotification("750 m Remaining", "Your stop is getting very close.")
+        }
+
+        // Progressive Alert 3: Alert Distance -> Full Urgent Alarm
+        if (distanceMeters <= alertDistanceMeters && !triggeredServiceAlertDist && !isAlarmTriggered) {
+            triggeredServiceAlertDist = true
             isAlarmTriggered = true
             isApproaching = true
             ServiceLocationBridge.setAlarmTriggered(true)
@@ -487,6 +574,54 @@ class JourneyMonitoringService : Service() {
         } else if (distanceMeters <= (alertDistanceMeters * 1.5).toInt()) {
             isApproaching = true
         }
+
+        // Progressive Alert 4: 300 m Escalated Wake Warning
+        if (distanceMeters <= 300 && !triggeredService300m) {
+            triggeredService300m = true
+            isApproaching = true
+            if (!isAlarmTriggered) {
+                isAlarmTriggered = true
+                ServiceLocationBridge.setAlarmTriggered(true)
+                triggerUrgentAlarmNotification()
+                triggerCustomHapticFeedback()
+                triggerCustomSoundAlert()
+            }
+        }
+
+        // Progressive Alert 5: 100 m Final Wake Alert
+        if (distanceMeters <= 100 && !triggeredService100m) {
+            triggeredService100m = true
+            isApproaching = true
+            if (!isAlarmTriggered) {
+                isAlarmTriggered = true
+                ServiceLocationBridge.setAlarmTriggered(true)
+                triggerUrgentAlarmNotification()
+                triggerCustomHapticFeedback()
+                triggerCustomSoundAlert()
+            }
+        }
+    }
+
+    private fun triggerProgressiveAlertNotification(title: String, message: String) {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            6,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val progressiveNotification = NotificationCompat.Builder(this, MONITORING_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("🔔 $title - $destinationName")
+            .setContentText(message)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        manager.notify(MONITOR_NOTIF_ID, progressiveNotification)
     }
 
     private fun triggerUrgentAlarmNotification() {
@@ -652,6 +787,8 @@ class JourneyMonitoringService : Service() {
     }
 
     private fun stopTracking() {
+        gpsWatchdogHandler?.removeCallbacks(gpsWatchdogRunnable)
+        gpsWatchdogHandler = null
         locationCallback?.let {
             fusedLocationClient.removeLocationUpdates(it)
             locationCallback = null
